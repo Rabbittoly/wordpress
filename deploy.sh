@@ -120,8 +120,40 @@ if docker ps -a --format '{{.Names}}' | grep -q "^traefik$"; then
     read -p "Использовать существующий Traefik? (y/n): " use_existing_traefik
     
     if [[ "$use_existing_traefik" =~ ^[Yy]$ ]]; then
-        # Модифицируем docker-compose.yml для использования существующего Traefik
-        sed -i '/^  traefik:/,/^  wordpress:/s/^/#/' docker-compose.yml
+        # Создаем новый docker-compose без секции Traefik
+        echo "# Временный файл, использующий существующий Traefik" > docker-compose.new.yml
+
+        # Удаляем секцию Traefik и сохраняем остальное
+        local record_services=false
+        local skip_line=false
+
+        while IFS= read -r line; do
+            # Начало секции services
+            if [[ "$line" =~ ^services: ]]; then
+                record_services=true
+                echo "$line" >> docker-compose.new.yml
+                continue
+            fi
+
+            # Начало секции traefik
+            if $record_services && [[ "$line" =~ ^[[:space:]]+traefik: ]]; then
+                skip_line=true
+                continue
+            fi
+
+            # Конец секции traefik
+            if $skip_line && [[ "$line" =~ ^[[:space:]]+wordpress: ]]; then
+                skip_line=false
+            fi
+
+            # Записываем строки, если они не в секции traefik
+            if ! $skip_line; then
+                echo "$line" >> docker-compose.new.yml
+            fi
+        done < docker-compose.yml
+
+        # Заменяем оригинальный файл
+        mv docker-compose.new.yml docker-compose.yml
         echo -e "${GREEN}Настроено использование существующего Traefik.${NC}"
     else
         # Изменяем имя контейнера Traefik в docker-compose.yml
