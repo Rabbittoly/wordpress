@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Simple WordPress Docker Deployment Script
+# Улучшенный WordPress Docker Deployment Script
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -13,112 +13,180 @@ echo -e "${BLUE}==============================================${NC}"
 echo -e "${BLUE}       WordPress Docker Deployment           ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 
-# Check if Docker is installed
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}Docker is not installed. Installing Docker...${NC}"
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sh get-docker.sh
-    sudo usermod -aG docker $USER
-    echo -e "${GREEN}Docker installed successfully!${NC}"
-fi
-
-# Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}Docker Compose is not installed. Installing Docker Compose...${NC}"
-    sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
-    echo -e "${GREEN}Docker Compose installed successfully!${NC}"
-fi
-
-# Create required directories
-echo -e "${YELLOW}Creating required directories...${NC}"
-mkdir -p letsencrypt nginx/logs mysql config
-
-# Check if the .env file exists
+# Проверка существования .env файла
 if [ ! -f .env ]; then
-    echo -e "${RED}.env file not found. Please run install.sh first or create .env file.${NC}"
-    exit 1
+    echo -e "${YELLOW}Файл .env не найден. Нужно создать его.${NC}"
+    
+    # Запрос домена
+    read -p "Введите домен (например, example.com): " domain_name
+    
+    # Запрос email для Let's Encrypt
+    read -p "Введите email для SSL-сертификатов: " acme_email
+    
+    # Генерация надежных паролей
+    mysql_root_password=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9')
+    mysql_password=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9')
+    redis_password=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9')
+    
+    # Определение часового пояса
+    TZ=$(timedatectl 2>/dev/null | grep "Time zone" | awk '{print $3}' || echo "UTC")
+    
+    # Создание .env файла
+    cat > .env << EOL
+# Domain settings
+DOMAIN_NAME=${domain_name}
+ACME_EMAIL=${acme_email}
+
+# Database settings
+MYSQL_ROOT_PASSWORD=${mysql_root_password}
+MYSQL_DATABASE=wordpress
+MYSQL_USER=wordpress
+MYSQL_PASSWORD=${mysql_password}
+WP_TABLE_PREFIX=wp_
+
+# Redis settings
+REDIS_PASSWORD=${redis_password}
+
+# Timezone
+TZ=${TZ}
+EOL
+
+    echo -e "${GREEN}Файл .env создан успешно!${NC}"
+    
+    # Сохранение учетных данных
+    echo "WordPress Credentials" > wordpress_credentials.txt
+    echo "Domain: $domain_name" >> wordpress_credentials.txt
+    echo "MySQL Root Password: $mysql_root_password" >> wordpress_credentials.txt
+    echo "MySQL Password: $mysql_password" >> wordpress_credentials.txt
+    echo "Redis Password: $redis_password" >> wordpress_credentials.txt
+    echo -e "${YELLOW}Учетные данные сохранены в: wordpress_credentials.txt${NC}"
 else
-    echo -e "${GREEN}.env file found. Loading configuration...${NC}"
+    echo -e "${GREEN}Файл .env найден. Загрузка конфигурации...${NC}"
     source .env
 fi
 
-# Set proper permissions
-echo -e "${YELLOW}Setting proper permissions...${NC}"
-chmod +x deploy.sh backup.sh restore.sh
-
-# Ask for Cloudflare setup
-echo -e "${YELLOW}Would you like to configure Cloudflare DNS now? (y/n)${NC}"
-read -r configure_cloudflare
-if [[ "$configure_cloudflare" =~ ^[Yy]$ ]]; then
-    # Get the public IP address
-    public_ip=$(curl -s https://ipinfo.io/ip)
-    
-    echo -e "${YELLOW}Please enter your Cloudflare email:${NC}"
-    read -r cloudflare_email
-    
-    echo -e "${YELLOW}Please enter your Cloudflare API key:${NC}"
-    read -r cloudflare_api_key
-    
-    echo -e "${YELLOW}Setting up DNS record for ${DOMAIN_NAME} pointing to ${public_ip}${NC}"
-    
-    # Use Cloudflare API to set up DNS record
-    zone_id=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=${DOMAIN_NAME}" \
-        -H "X-Auth-Email: ${cloudflare_email}" \
-        -H "X-Auth-Key: ${cloudflare_api_key}" \
-        -H "Content-Type: application/json" | grep -Po '(?<="id":")[^"]*' | head -1)
-        
-    if [ -z "$zone_id" ]; then
-        echo -e "${RED}Could not find zone for domain ${DOMAIN_NAME}. Please set up DNS manually.${NC}"
-    else
-        echo -e "${GREEN}Found zone ID: ${zone_id}${NC}"
-        
-        # Create A record
-        response=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records" \
-            -H "X-Auth-Email: ${cloudflare_email}" \
-            -H "X-Auth-Key: ${cloudflare_api_key}" \
-            -H "Content-Type: application/json" \
-            --data "{\"type\":\"A\",\"name\":\"${DOMAIN_NAME}\",\"content\":\"${public_ip}\",\"ttl\":1,\"proxied\":true}")
-            
-        if echo "$response" | grep -q '"success":true'; then
-            echo -e "${GREEN}DNS record created successfully!${NC}"
-        else
-            echo -e "${RED}Failed to create DNS record. Error: ${response}${NC}"
-            echo -e "${YELLOW}Please set up DNS manually.${NC}"
-        fi
-    fi
+# Настройка File Manager
+echo -e "${YELLOW}Настройка доступа к файлам WordPress через File Manager...${NC}"
+if ! grep -q "FILE_MANAGER_ENABLED" .env; then
+    echo "FILE_MANAGER_ENABLED=true" >> .env
+    source .env
 fi
 
-# Check for existing containers with same names and remove them if needed
-echo -e "${YELLOW}Checking for existing containers...${NC}"
+# Создание необходимых директорий
+echo -e "${YELLOW}Создание необходимых директорий...${NC}"
+mkdir -p letsencrypt nginx/logs mysql redis nginx/conf.d backups
 
-# Get container names from docker-compose.yml
+# Применение оптимизаций для Nginx
+echo -e "${YELLOW}Настройка оптимизаций Nginx...${NC}"
+
+# Настройки безопасности
+cat > nginx/conf.d/security.conf << 'EOL'
+# Заголовки безопасности
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-XSS-Protection "1; mode=block" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "no-referrer-when-downgrade" always;
+
+# Отключение вывода версии Nginx
+server_tokens off;
+EOL
+
+# Настройки кеширования и производительности
+cat > nginx/conf.d/performance.conf << 'EOL'
+# Кеширование статического контента
+location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
+    expires 30d;
+    add_header Cache-Control "public, no-transform";
+}
+
+# Включение gzip
+gzip on;
+gzip_comp_level 5;
+gzip_min_length 256;
+gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+EOL
+
+# Установка исполняемых прав на скрипты
+chmod +x *.sh
+
+# Проверка существующих контейнеров
+echo -e "${YELLOW}Проверка существующих контейнеров...${NC}"
 container_names=("traefik" "wordpress" "wordpress-nginx" "wordpress-db" "wordpress-redis")
 
 for container in "${container_names[@]}"; do
     if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-        echo -e "${YELLOW}Found existing container: $container. Removing...${NC}"
+        echo -e "${YELLOW}Найден существующий контейнер: $container. Удаление...${NC}"
         docker stop $container 2>/dev/null
         docker rm $container 2>/dev/null
     fi
 done
 
-# Start containers
-echo -e "${YELLOW}Starting Docker containers...${NC}"
+# Запуск контейнеров
+echo -e "${YELLOW}Запуск Docker контейнеров...${NC}"
 docker-compose up -d
 
-# Get public IP
-public_ip=$(curl -s https://ipinfo.io/ip)
+# Получение публичного IP
+public_ip=$(curl -s https://ipinfo.io/ip || echo "Не удалось определить")
 
-# Display information
-echo -e "\n${GREEN}Deployment Complete!${NC}"
-echo -e "${YELLOW}WordPress is now deployed with NGINX, SSL, and optional Cloudflare integration.${NC}"
-echo -e "${YELLOW}It may take a minute or two for the services to fully start.${NC}"
-echo -e "${YELLOW}SSL certificates will be automatically obtained from Let's Encrypt.${NC}"
-echo -e "${GREEN}Your server IP: ${public_ip}${NC}"
-echo -e "${GREEN}Access your WordPress site at: https://${DOMAIN_NAME}${NC}"
-echo -e "${GREEN}WordPress admin: https://${DOMAIN_NAME}/wp-admin${NC}"
-echo -e "${YELLOW}To check logs: docker-compose logs${NC}"
-echo -e "${YELLOW}To stop services: docker-compose down${NC}"
-echo -e "${YELLOW}To restart services: docker-compose restart${NC}"
-echo -e "${YELLOW}To create a backup: ./backup.sh${NC}"
+# Ожидание запуска контейнеров
+echo -e "${YELLOW}Ожидание запуска контейнеров...${NC}"
+sleep 10
+
+# Проверка статуса контейнеров
+echo -e "${YELLOW}Проверка статуса контейнеров:${NC}"
+docker-compose ps
+
+# Создание скрипта для мониторинга
+cat > monitor.sh << 'EOL'
+#!/bin/bash
+source .env
+
+# Проверка доступности сайта
+status_code=$(curl -s -o /dev/null -w "%{http_code}" https://${DOMAIN_NAME} 2>/dev/null || echo "000")
+
+if [ "$status_code" != "200" ]; then
+    echo "[$(date)] Сайт недоступен (код ответа: $status_code). Перезапуск контейнеров..."
+    docker-compose restart
+else
+    echo "[$(date)] Сайт работает нормально (код ответа: $status_code)"
+fi
+
+# Проверка использования диска
+disk_usage=$(df -h | grep '/dev/sda1' | awk '{print $5}' | sed 's/%//')
+if [ "$disk_usage" -gt 90 ]; then
+    echo "[$(date)] ПРЕДУПРЕЖДЕНИЕ: Высокое использование диска: ${disk_usage}%"
+fi
+EOL
+chmod +x monitor.sh
+
+# Добавление задачи мониторинга в crontab
+(crontab -l 2>/dev/null | grep -v "$(pwd)/monitor.sh"; echo "*/30 * * * * $(pwd)/monitor.sh >> $(pwd)/monitoring.log 2>&1") | crontab -
+
+# Вывод информации о деплое
+echo -e "\n${GREEN}Деплой успешно завершен!${NC}"
+echo -e "${YELLOW}WordPress развернут с NGINX, SSL и Redis.${NC}"
+echo -e "${YELLOW}Может потребоваться несколько минут для полного запуска всех служб.${NC}"
+echo -e "${YELLOW}SSL-сертификаты будут автоматически получены от Let's Encrypt.${NC}"
+echo -e "${GREEN}IP вашего сервера: ${public_ip}${NC}"
+echo -e "${GREEN}Доступ к WordPress: https://${DOMAIN_NAME}${NC}"
+echo -e "${GREEN}Админ-панель: https://${DOMAIN_NAME}/wp-admin${NC}"
+echo -e "${YELLOW}Для просмотра логов: docker-compose logs${NC}"
+echo -e "${YELLOW}Для остановки служб: docker-compose down${NC}"
+echo -e "${YELLOW}Для перезапуска служб: docker-compose restart${NC}"
+echo -e "${YELLOW}Для создания резервной копии: ./backup.sh${NC}"
+echo -e "${YELLOW}Для мониторинга: ./monitor.sh${NC}"
+
+# Установка и настройка File Manager
+if [ "${FILE_MANAGER_ENABLED}" = "true" ]; then
+  echo -e "${YELLOW}Ожидание инициализации WordPress...${NC}"
+  sleep 45 # Ожидание полной инициализации WordPress
+  
+  echo -e "${YELLOW}Установка и настройка плагина File Manager...${NC}"
+  docker-compose exec -T wordpress wp plugin install wp-file-manager --activate --allow-root
+  
+  # Настройка безопасности File Manager (ограничение доступа только для администраторов)
+  docker-compose exec -T wordpress wp option add wp_file_manager_settings '{"fm_enable_root":"1","fm_enable_media":"1","fm_public_write":"0","fm_private_write":"0"}' --format=json
+  
+  echo -e "${GREEN}Плагин File Manager успешно установлен${NC}"
+  echo -e "${GREEN}Доступ к файловому менеджеру через админ-панель: https://${DOMAIN_NAME}/wp-admin → WP File Manager${NC}"
+fi

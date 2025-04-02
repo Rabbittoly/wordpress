@@ -261,4 +261,22 @@ When deployed, it provides a complete WordPress hosting environment with:
 - `backup.sh` - Create a backup of WordPress files and database
 - `restore.sh` - Restore from a backup
 - `install.sh` - One-command installer for new deployments
+- `wp-files.sh` - Quick access to WordPress files via shell
+- `monitor.sh` - Monitoring and auto-recovery script
+
+## File Management
+
+This deployment offers two methods to manage WordPress files:
+
+### 1. WP File Manager (Graphical Interface)
+After installation, a File Manager plugin is automatically installed and configured in WordPress:
+- Access it via WordPress admin panel: https://your-domain.com/wp-admin → WP File Manager
+- Allows secure file operations directly from the browser
+- Perfect for clients with limited technical knowledge
+
+### 2. Shell Access (Command Line)
+For more advanced users or when admin panel is not accessible:
+- Run: `./wp-files.sh` to access WordPress files via command line
+- Navigate to `/var/www/html` to work with WordPress files
+- Type `exit` when done
 
