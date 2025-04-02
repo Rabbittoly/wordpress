@@ -65,21 +65,100 @@ if ! command -v docker-compose &> /dev/null; then
 fi
 
 # Запрос директории установки
-read -p "Введите имя директории установки (по умолчанию: wordpress): " install_dir
-install_dir=${install_dir:-wordpress}
+echo -e "${YELLOW}Выберите вариант установки:${NC}"
+echo "1. Установить в текущую директорию ($(pwd))"
+echo "2. Создать поддиректорию в текущей директории"
+echo "3. Указать полный путь для установки"
+read -p "Выберите вариант [1-3]: " install_option
 
-if [ -d "$install_dir" ]; then
-  echo -e "${RED}Директория $install_dir уже существует. Выберите другое имя или удалите существующую директорию.${NC}"
-  exit 1
-fi
+case $install_option in
+  1)
+    # Установка в текущую директорию
+    install_dir="."
+    echo -e "${GREEN}Будет использована текущая директория: $(pwd)${NC}"
+    # Проверка, пуста ли директория
+    if [ "$(ls -A | grep -v '^\.'| wc -l)" -ne 0 ]; then
+      echo -e "${YELLOW}Предупреждение: Текущая директория не пуста. Продолжить? (y/n)${NC}"
+      read -p "" continue_empty
+      if [[ ! "$continue_empty" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Установка отменена.${NC}"
+        exit 0
+      fi
+    fi
+    ;;
+  2)
+    # Создание поддиректории
+    read -p "Введите имя поддиректории (по умолчанию: wordpress): " subdir_name
+    subdir_name=${subdir_name:-wordpress}
+    install_dir="$subdir_name"
+    
+    if [ -d "$install_dir" ]; then
+      echo -e "${RED}Директория $install_dir уже существует. Выберите другое имя или удалите существующую директорию.${NC}"
+      exit 1
+    fi
+    echo -e "${GREEN}Будет создана директория: $(pwd)/$install_dir${NC}"
+    ;;
+  3)
+    # Указание полного пути
+    read -p "Введите полный путь для установки: " full_path
+    if [ -z "$full_path" ]; then
+      echo -e "${RED}Путь не может быть пустым.${NC}"
+      exit 1
+    fi
+    
+    # Проверка существования директории
+    if [ -d "$full_path" ]; then
+      echo -e "${YELLOW}Директория $full_path уже существует. Если продолжить, файлы могут быть перезаписаны.${NC}"
+      read -p "Продолжить? (y/n): " continue_overwrite
+      if [[ ! "$continue_overwrite" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Установка отменена.${NC}"
+        exit 0
+      fi
+    else
+      # Создание директории, если она не существует
+      mkdir -p "$full_path"
+      if [ $? -ne 0 ]; then
+        echo -e "${RED}Не удалось создать директорию $full_path. Проверьте права доступа.${NC}"
+        exit 1
+      fi
+    fi
+    
+    install_dir="$full_path"
+    echo -e "${GREEN}Будет использован путь: $install_dir${NC}"
+    ;;
+  *)
+    echo -e "${RED}Некорректный выбор. Установка отменена.${NC}"
+    exit 1
+    ;;
+esac
 
 # Клонирование репозитория
 echo -e "${GREEN}Клонирование репозитория WordPress...${NC}"
-git clone https://github.com/Rabbittoly/wordpress.git "$install_dir"
-if [ $? -ne 0 ]; then
-  echo -e "${RED}Ошибка: Не удалось клонировать репозиторий${NC}"
-  exit 1
+
+# Разная логика в зависимости от типа инсталляции
+if [ "$install_dir" = "." ]; then
+  # В текущую директорию - клонируем содержимое без папки
+  git clone --depth 1 https://github.com/Rabbittoly/wordpress.git temp_wp_clone
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Ошибка: Не удалось клонировать репозиторий${NC}"
+    exit 1
+  fi
+  # Копируем содержимое без .git и удаляем временную директорию
+  cp -r temp_wp_clone/* .
+  cp -r temp_wp_clone/.* . 2>/dev/null || true
+  rm -rf temp_wp_clone
+  echo -e "${GREEN}Файлы успешно скопированы в текущую директорию${NC}"
+else
+  # Клонирование в указанную директорию
+  git clone --depth 1 https://github.com/Rabbittoly/wordpress.git "$install_dir"
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Ошибка: Не удалось клонировать репозиторий в $install_dir${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}Репозиторий успешно клонирован в $install_dir${NC}"
 fi
+
+# Переход в директорию установки
 cd "$install_dir"
 
 # Настройка WordPress
