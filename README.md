@@ -23,16 +23,21 @@ This repository contains everything you need to deploy WordPress with Docker, Ng
 
 ## One-Command Installation
 
-The fastest way to deploy this WordPress template is using our one-command installer:
+The fastest way to deploy this WordPress template is using our installer:
 
 ```bash
-curl -s https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh | bash
+# Download the installer
+curl -s https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh -o wp-install.sh
+chmod +x wp-install.sh
+./wp-install.sh
 ```
 
 Or with wget:
 
 ```bash
-wget -O - https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh | bash
+wget -q https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh -O wp-install.sh
+chmod +x wp-install.sh
+./wp-install.sh
 ```
 
 The installer will:
@@ -119,7 +124,7 @@ This setup includes performance optimizations for:
 ### Creating a Backup
 
 Run the backup script:
-```
+```bash
 ./backup.sh
 ```
 
@@ -135,27 +140,30 @@ This will:
 To restore from a backup:
 
 1. Stop the containers:
-   ```
+   ```bash
    docker-compose down
    ```
 
 2. Extract the backup:
-   ```
+   ```bash
    tar -xzf backups/example.com-YYYYMMDD-HHMMSS-full.tar.gz
    ```
 
 3. Restore the files:
-   ```
-   docker run --rm -v wordpress_data:/var/www/html -v $(pwd)/backups:/backup alpine sh -c "cd /var/www/html && rm -rf * && tar xzf /backup/example.com-YYYYMMDD-HHMMSS-files.tar.gz ."
+   ```bash
+   docker run --rm -v wordpress_wordpress_data:/var/www/html -v $(pwd)/backups:/backup alpine sh -c "cd /var/www/html && rm -rf * && tar xzf /backup/example.com-YYYYMMDD-HHMMSS-files.tar.gz ."
    ```
 
 4. Restore the database:
-   ```
-   gunzip < backups/example.com-YYYYMMDD-HHMMSS-db.sql.gz | docker-compose exec -T db mysql -u$MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE
+   ```bash
+   # Load environment variables
+   source .env
+   # Restore database
+   gunzip < backups/example.com-YYYYMMDD-HHMMSS-db.sql.gz | docker-compose exec -T db mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"
    ```
 
 5. Restart the containers:
-   ```
+   ```bash
    docker-compose up -d
    ```
 
@@ -169,7 +177,7 @@ WordPress core, themes, and plugins should be updated through the WordPress admi
 
 To update the containers to the latest versions:
 
-```
+```bash
 docker-compose down
 docker-compose pull
 docker-compose up -d
@@ -177,7 +185,7 @@ docker-compose up -d
 
 ### Viewing Logs
 
-```
+```bash
 # All containers
 docker-compose logs
 
