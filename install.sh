@@ -175,6 +175,12 @@ if [ "$install_dir" = "." ]; then
   rm -rf temp_wp_clone
   echo -e "${GREEN}Файлы успешно скопированы в текущую директорию${NC}"
 else
+  # Проверяем и очищаем директорию перед клонированием
+  if [ -d "$install_dir" ] && [ "$(ls -A "$install_dir" 2>/dev/null)" ]; then
+    echo -e "${YELLOW}Очистка существующей директории перед клонированием...${NC}"
+    rm -rf "$install_dir"/* "$install_dir"/.[^.]* 2>/dev/null
+  fi
+  
   # Клонирование в указанную директорию
   git clone --depth 1 https://github.com/Rabbittoly/wordpress.git "$install_dir"
   if [ $? -ne 0 ]; then
