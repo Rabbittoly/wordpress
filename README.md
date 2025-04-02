@@ -227,7 +227,12 @@ To install on a specific server with SSH access:
    curl -s https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh | bash
    ```
 
-3. Follow the on-screen prompts to configure your WordPress site.
+3. Choose your installation directory:
+   - Install in the current directory
+   - Create a subdirectory in the current location
+   - Specify a custom path for installation
+
+4. Follow the on-screen prompts to configure your WordPress site.
 
 ## Using as a Template
 
