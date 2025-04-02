@@ -1,83 +1,71 @@
 #!/bin/bash
+source .env
 
-# Exit on error
-set -e
+# Директория для бэкапов
+BACKUP_DIR="./backups"
+DATE=$(date +"%Y-%m-%d_%H-%M-%S")
+BACKUP_FILE="$BACKUP_DIR/wordpress_backup_$DATE.tar.gz"
 
-# Colors for output
+# Создаем директорию для бэкапов, если её нет
+mkdir -p $BACKUP_DIR
+
+# Цвета для вывода
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Load environment variables
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-else
-    echo -e "${RED}Error: .env file not found${NC}"
+echo -e "${YELLOW}Создание резервной копии WordPress...${NC}"
+echo -e "${YELLOW}Дата: $(date)${NC}"
+
+# Проверка доступности контейнеров
+if ! docker-compose ps | grep -q "wordpress.*Up"; then
+    echo -e "${RED}Ошибка: WordPress контейнер не запущен!${NC}"
     exit 1
 fi
 
-# Create backup directory
-BACKUP_DIR="backups"
-mkdir -p "$BACKUP_DIR"
+echo "Создание резервной копии базы данных..."
+docker-compose exec -T db mysqldump -u root -p${MYSQL_ROOT_PASSWORD} ${MYSQL_DATABASE} > $BACKUP_DIR/db_backup_$DATE.sql
 
-# Generate timestamp
-TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-BACKUP_NAME="${DOMAIN_NAME//[^a-zA-Z0-9]/_}-$TIMESTAMP"
-
-echo -e "${GREEN}Starting WordPress backup: $BACKUP_NAME${NC}"
-
-# Backup WordPress files
-echo -e "${YELLOW}Backing up WordPress files...${NC}"
-docker run --rm --volumes-from wordpress -v $(pwd)/$BACKUP_DIR:/backup alpine sh -c "cd /var/www/html && tar czf /backup/$BACKUP_NAME-files.tar.gz ."
-
-# Backup WordPress database
-echo -e "${YELLOW}Backing up WordPress database...${NC}"
-docker-compose exec db sh -c "mysqldump -u $MYSQL_USER -p'$MYSQL_PASSWORD' $MYSQL_DATABASE | gzip > /tmp/$BACKUP_NAME-db.sql.gz"
-docker cp wordpress-db:/tmp/$BACKUP_NAME-db.sql.gz $BACKUP_DIR/
-docker-compose exec db sh -c "rm /tmp/$BACKUP_NAME-db.sql.gz"
-
-# Create a combined backup
-echo -e "${YELLOW}Creating combined backup archive...${NC}"
-tar czf $BACKUP_DIR/$BACKUP_NAME-full.tar.gz $BACKUP_DIR/$BACKUP_NAME-files.tar.gz $BACKUP_DIR/$BACKUP_NAME-db.sql.gz
-
-# Cleanup individual backup files (optional)
-# rm $BACKUP_DIR/$BACKUP_NAME-files.tar.gz $BACKUP_DIR/$BACKUP_NAME-db.sql.gz
-
-# Set proper permissions
-chmod 600 $BACKUP_DIR/$BACKUP_NAME-full.tar.gz
-
-echo -e "${GREEN}Backup completed successfully!${NC}"
-echo -e "${YELLOW}Backup location: $BACKUP_DIR/$BACKUP_NAME-full.tar.gz${NC}"
-
-# Optional: Upload to external storage
-echo -e "${YELLOW}Would you like to upload the backup to an external server via SCP? (y/n)${NC}"
-read -r upload_backup
-if [[ "$upload_backup" =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}Enter the remote server username:${NC}"
-    read -r remote_user
-    echo -e "${YELLOW}Enter the remote server address:${NC}"
-    read -r remote_server
-    echo -e "${YELLOW}Enter the remote backup path:${NC}"
-    read -r remote_path
-    
-    echo -e "${YELLOW}Uploading backup to ${remote_user}@${remote_server}:${remote_path}...${NC}"
-    scp $BACKUP_DIR/$BACKUP_NAME-full.tar.gz ${remote_user}@${remote_server}:${remote_path}
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}Backup uploaded successfully!${NC}"
-    else
-        echo -e "${RED}Backup upload failed.${NC}"
-    fi
+# Проверка успешности дампа базы
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Ошибка при создании дампа базы данных!${NC}"
+    rm -f $BACKUP_DIR/db_backup_$DATE.sql
+    exit 1
 fi
 
-# Cleanup old backups
-echo -e "${YELLOW}Would you like to clean up backups older than 30 days? (y/n)${NC}"
-read -r cleanup_backups
-if [[ "$cleanup_backups" =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}Cleaning up old backups...${NC}"
-    find $BACKUP_DIR -name "*.tar.gz" -type f -mtime +30 -delete
-    echo -e "${GREEN}Old backups cleaned up!${NC}"
+echo "Архивирование файлов WordPress..."
+tar -czf $BACKUP_FILE wp-content $BACKUP_DIR/db_backup_$DATE.sql
+
+# Проверка успешности создания архива
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Ошибка при создании архива!${NC}"
+    rm -f $BACKUP_DIR/db_backup_$DATE.sql
+    exit 1
 fi
 
-echo -e "${GREEN}Backup process completed!${NC}"
+# Удаляем временный дамп базы
+rm $BACKUP_DIR/db_backup_$DATE.sql
+
+# Получение размера файла резервной копии
+backup_size=$(du -h $BACKUP_FILE | cut -f1)
+
+echo -e "${GREEN}Резервная копия успешно создана: $BACKUP_FILE (размер: $backup_size)${NC}"
+
+# Удаление старых резервных копий (оставляем последние 5)
+echo "Управление старыми резервными копиями..."
+backup_count=$(ls -1 $BACKUP_DIR/wordpress_backup_*.tar.gz 2>/dev/null | wc -l)
+
+if [ $backup_count -gt 5 ]; then
+    echo "Удаление старых резервных копий (сохраняются только последние 5)..."
+    ls -t $BACKUP_DIR/wordpress_backup_*.tar.gz | tail -n +6 | xargs -r rm -f
+    echo -e "${GREEN}Старые резервные копии удалены.${NC}"
+else
+    echo -e "${GREEN}Всего резервных копий: $backup_count (не более 5, удаление не требуется).${NC}"
+fi
+
+# Информация о свободном месте на диске
+disk_free=$(df -h . | awk 'NR==2 {print $4}')
+echo -e "${YELLOW}Свободное место на диске: $disk_free${NC}"
+
+echo -e "${GREEN}Процесс резервного копирования завершен успешно!${NC}"
