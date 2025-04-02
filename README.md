@@ -222,9 +222,18 @@ To install on a specific server with SSH access:
    ssh user@your-server-ip
    ```
 
-2. Run the one-command installer:
+2. Download and run the installer:
    ```bash
-   curl -s https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh | bash
+   curl -s https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh -o wp-install.sh
+   chmod +x wp-install.sh
+   ./wp-install.sh
+   ```
+   
+   Alternatively, you can clone the repository:
+   ```bash
+   git clone --depth 1 https://github.com/Rabbittoly/wordpress.git
+   cd wordpress
+   ./install.sh
    ```
 
 3. Choose your installation directory:
