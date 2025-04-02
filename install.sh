@@ -64,15 +64,41 @@ if ! command -v docker-compose &> /dev/null; then
   echo -e "${GREEN}Docker Compose успешно установлен!${NC}"
 fi
 
+# Папка по умолчанию для установки
+DEFAULT_INSTALL_DIR="/root/wordpress"
+
 # Запрос директории установки
 echo -e "${YELLOW}Выберите вариант установки:${NC}"
-echo "1. Установить в текущую директорию ($(pwd))"
-echo "2. Создать поддиректорию в текущей директории"
-echo "3. Указать полный путь для установки"
-read -p "Выберите вариант [1-3]: " install_option
+echo "1. Установить в папку по умолчанию ($DEFAULT_INSTALL_DIR)"
+echo "2. Установить в текущую директорию ($(pwd))"
+echo "3. Создать поддиректорию в текущей директории"
+echo "4. Указать полный путь для установки"
+read -p "Выберите вариант [1-4] (по умолчанию: 1): " install_option
+install_option=${install_option:-1}
 
 case $install_option in
   1)
+    # Установка в директорию по умолчанию
+    install_dir="$DEFAULT_INSTALL_DIR"
+    echo -e "${GREEN}Будет использована директория по умолчанию: $install_dir${NC}"
+    # Проверка существования директории
+    if [ -d "$install_dir" ]; then
+      echo -e "${YELLOW}Предупреждение: Директория $install_dir уже существует. Содержимое может быть перезаписано. Продолжить? (y/n)${NC}"
+      read -p "" continue_overwrite
+      if [[ ! "$continue_overwrite" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Установка отменена.${NC}"
+        exit 0
+      fi
+    else
+      # Создание директории
+      mkdir -p "$install_dir"
+      if [ $? -ne 0 ]; then
+        echo -e "${RED}Не удалось создать директорию $install_dir${NC}"
+        exit 1
+      fi
+    fi
+    ;;
+  2)
     # Установка в текущую директорию
     install_dir="."
     echo -e "${GREEN}Будет использована текущая директория: $(pwd)${NC}"
@@ -86,7 +112,7 @@ case $install_option in
       fi
     fi
     ;;
-  2)
+  3)
     # Создание поддиректории
     read -p "Введите имя поддиректории (по умолчанию: wordpress): " subdir_name
     subdir_name=${subdir_name:-wordpress}
@@ -98,7 +124,7 @@ case $install_option in
     fi
     echo -e "${GREEN}Будет создана директория: $(pwd)/$install_dir${NC}"
     ;;
-  3)
+  4)
     # Указание полного пути
     read -p "Введите полный путь для установки: " full_path
     if [ -z "$full_path" ]; then
