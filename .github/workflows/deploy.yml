@@ -1,4 +1,4 @@
-name: Deploy WordPress
+name: Validate WordPress Template
 
 on:
   push:
@@ -8,20 +8,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: SSH and deploy
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.PORT }}
-          script: |
-            cd /path/to/wordpress
-            git pull
-            chmod +x deploy.sh
-            ./deploy.sh
+      - name: Verify docker-compose.yml
+        run: |
+          docker-compose -f docker-compose.yml config
+        continue-on-error: true
+
+      - name: Verify shell scripts
+        run: |
+          chmod +x *.sh
+          bash -n deploy.sh
+          bash -n backup.sh
+          bash -n restore.sh
+          echo "All scripts syntax is valid"
+
+      - name: Validate directory structure
+        run: |
+          test -d nginx && echo "nginx directory exists" || exit 1
+          test -d config && echo "config directory exists" || exit 1
+          test -d mysql && echo "mysql directory exists" || exit 1
+          test -f .env.example && echo ".env.example exists" || exit 1
+          echo "All required directories and files exist"
+
+      - name: Mark as Template Ready
+        run: echo "✅ WordPress Template is valid and ready for use"

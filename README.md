@@ -1,6 +1,6 @@
 # WordPress Docker Deployment
 
-This repository contains everything you need to deploy WordPress with Docker, Nginx, Traefik for SSL, and Cloudflare integration on a VPS.
+This repository contains everything you need to deploy WordPress with Docker, Nginx, Traefik for SSL, and Cloudflare integration on a VPS. You can use this as a template for client sites with quick and easy installation.
 
 ## Features
 
@@ -13,30 +13,55 @@ This repository contains everything you need to deploy WordPress with Docker, Ng
 - 🗄️ Redis for object caching
 - 🔧 Optimized configurations for WordPress, PHP, NGINX, and MariaDB
 - 💾 Simple backup and restore functionality
+- ⚡ One-command installation for quick deployment
 
 ## Prerequisites
 
-- A VPS with Docker and Docker Compose installed
+- A VPS with SSH access
 - A domain name pointing to your server's IP address
 - Cloudflare account (optional, but recommended)
 
-## Quick Start
+## One-Command Installation
+
+The fastest way to deploy this WordPress template is using our one-command installer:
+
+```bash
+curl -s https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh | bash
+```
+
+Or with wget:
+
+```bash
+wget -O - https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh | bash
+```
+
+The installer will:
+- Install Docker and Docker Compose if needed
+- Clone this repository
+- Guide you through basic configuration
+- Generate secure passwords
+- Set up your WordPress installation
+- Deploy everything automatically
+
+## Manual Installation
+
+If you prefer a manual approach:
 
 1. Clone this repository:
-   ```
+   ```bash
    git clone https://github.com/Rabbittoly/wordpress.git
    cd wordpress
    ```
 
 2. Configure your settings in the `.env` file:
-   ```
+   ```bash
    cp .env.example .env
    nano .env
    ```
    Update with your domain, email, and preferred passwords.
 
 3. Run the deployment script:
-   ```
+   ```bash
    chmod +x deploy.sh
    ./deploy.sh
    ```
@@ -188,3 +213,52 @@ If the SSL certificate isn't being issued:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+## Server Installation
+
+To install on a specific server with SSH access:
+
+1. Connect to your server:
+   ```bash
+   ssh user@your-server-ip
+   ```
+
+2. Run the one-command installer:
+   ```bash
+   curl -s https://raw.githubusercontent.com/Rabbittoly/wordpress/main/install.sh | bash
+   ```
+
+3. Follow the on-screen prompts to configure your WordPress site.
+
+## Using as a Template
+
+This repository is designed to be used as a template for client WordPress installations:
+
+1. Share the one-command installer with your client
+2. Let them run it on their server
+3. The installation script will guide them through the process
+4. All necessary components will be installed and configured automatically
+
+When deployed, it provides a complete WordPress hosting environment with:
+- WordPress with PHP 8.2
+- NGINX as a reverse proxy
+- MariaDB as the database
+- Redis for object caching
+- Automatic SSL with Let's Encrypt
+- Traefik for handling routing and SSL
+- Cloudflare DNS integration (optional)
+
+## Configuration Files
+
+- `.env` - Environment variables (domain, passwords, etc.)
+- `docker-compose.yml` - Docker services configuration
+- `nginx/default.conf` - NGINX configuration
+- `config/uploads.ini` - PHP configuration
+- `mysql/my.cnf` - MySQL/MariaDB configuration
+
+## Maintenance Scripts
+
+- `deploy.sh` - Deploy or update the WordPress installation
+- `backup.sh` - Create a backup of WordPress files and database
+- `restore.sh` - Restore from a backup
+- `install.sh` - One-command installer for new deployments
+

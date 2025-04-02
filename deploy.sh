@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# Exit on error
-set -e
+# Simple WordPress Docker Deployment Script
 
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Print header
-echo -e "${GREEN}WordPress Docker Deployment${NC}"
-echo "=============================="
+echo -e "${BLUE}==============================================${NC}"
+echo -e "${BLUE}       WordPress Docker Deployment           ${NC}"
+echo -e "${BLUE}==============================================${NC}"
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
@@ -20,8 +20,6 @@ if ! command -v docker &> /dev/null; then
     sh get-docker.sh
     sudo usermod -aG docker $USER
     echo -e "${GREEN}Docker installed successfully!${NC}"
-else
-    echo -e "${GREEN}Docker is already installed.${NC}"
 fi
 
 # Check if Docker Compose is installed
@@ -30,8 +28,6 @@ if ! command -v docker-compose &> /dev/null; then
     sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     sudo chmod +x /usr/local/bin/docker-compose
     echo -e "${GREEN}Docker Compose installed successfully!${NC}"
-else
-    echo -e "${GREEN}Docker Compose is already installed.${NC}"
 fi
 
 # Create required directories
@@ -40,40 +36,29 @@ mkdir -p letsencrypt nginx/logs mysql config
 
 # Check if the .env file exists
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}Creating .env file. Please update it with your settings...${NC}"
-    cp .env.example .env
-    echo -e "${RED}Please update the .env file with your domain and credentials before continuing!${NC}"
-    echo -e "Would you like to edit it now? (y/n)"
-    read -r edit_env
-    if [[ "$edit_env" =~ ^[Yy]$ ]]; then
-        ${EDITOR:-vi} .env
-    else
-        echo -e "${YELLOW}Don't forget to update .env before starting the containers!${NC}"
-    fi
+    echo -e "${RED}.env file not found. Please run install.sh first or create .env file.${NC}"
+    exit 1
 else
-    echo -e "${GREEN}.env file already exists.${NC}"
+    echo -e "${GREEN}.env file found. Loading configuration...${NC}"
+    source .env
 fi
 
 # Set proper permissions
 echo -e "${YELLOW}Setting proper permissions...${NC}"
-chmod +x deploy.sh
-chmod +x backup.sh
+chmod +x deploy.sh backup.sh restore.sh
 
-# Configure Cloudflare
+# Ask for Cloudflare setup
 echo -e "${YELLOW}Would you like to configure Cloudflare DNS now? (y/n)${NC}"
 read -r configure_cloudflare
 if [[ "$configure_cloudflare" =~ ^[Yy]$ ]]; then
-    # Source the .env file to get the domain
-    source .env
+    # Get the public IP address
+    public_ip=$(curl -s https://ipinfo.io/ip)
     
     echo -e "${YELLOW}Please enter your Cloudflare email:${NC}"
     read -r cloudflare_email
     
     echo -e "${YELLOW}Please enter your Cloudflare API key:${NC}"
     read -r cloudflare_api_key
-    
-    # Get the public IP address
-    public_ip=$(curl -s https://ipinfo.io/ip)
     
     echo -e "${YELLOW}Setting up DNS record for ${DOMAIN_NAME} pointing to ${public_ip}${NC}"
     
@@ -108,13 +93,17 @@ fi
 echo -e "${YELLOW}Starting Docker containers...${NC}"
 docker-compose up -d
 
+# Get public IP
+public_ip=$(curl -s https://ipinfo.io/ip)
+
 # Display information
 echo -e "\n${GREEN}Deployment Complete!${NC}"
-echo -e "${YELLOW}WordPress is now being deployed with NGINX, SSL, and Cloudflare integration.${NC}"
+echo -e "${YELLOW}WordPress is now deployed with NGINX, SSL, and optional Cloudflare integration.${NC}"
 echo -e "${YELLOW}It may take a minute or two for the services to fully start.${NC}"
 echo -e "${YELLOW}SSL certificates will be automatically obtained from Let's Encrypt.${NC}"
+echo -e "${GREEN}Your server IP: ${public_ip}${NC}"
 echo -e "${GREEN}Access your WordPress site at: https://${DOMAIN_NAME}${NC}"
-echo -e "${YELLOW}To complete WordPress setup, visit: https://${DOMAIN_NAME}/wp-admin${NC}"
+echo -e "${GREEN}WordPress admin: https://${DOMAIN_NAME}/wp-admin${NC}"
 echo -e "${YELLOW}To check logs: docker-compose logs${NC}"
 echo -e "${YELLOW}To stop services: docker-compose down${NC}"
 echo -e "${YELLOW}To restart services: docker-compose restart${NC}"
