@@ -111,8 +111,29 @@ chmod +x *.sh
 
 # Проверка существующих контейнеров
 echo -e "${YELLOW}Проверка существующих контейнеров...${NC}"
-container_names=("traefik" "wordpress" "wordpress-nginx" "wordpress-db" "wordpress-redis")
+container_names=("wordpress" "wordpress-nginx" "wordpress-db" "wordpress-redis")
 
+# Проверка Traefik отдельно
+if docker ps -a --format '{{.Names}}' | grep -q "^traefik$"; then
+    echo -e "${YELLOW}Найден существующий контейнер Traefik.${NC}"
+    echo -e "${YELLOW}Этот контейнер может использоваться другими сервисами (например, Portainer).${NC}"
+    read -p "Использовать существующий Traefik? (y/n): " use_existing_traefik
+    
+    if [[ "$use_existing_traefik" =~ ^[Yy]$ ]]; then
+        # Модифицируем docker-compose.yml для использования существующего Traefik
+        sed -i '/^  traefik:/,/^  wordpress:/s/^/#/' docker-compose.yml
+        echo -e "${GREEN}Настроено использование существующего Traefik.${NC}"
+    else
+        # Изменяем имя контейнера Traefik в docker-compose.yml
+        sed -i 's/container_name: traefik/container_name: wordpress-traefik/g' docker-compose.yml
+        # Изменяем имя в лейблах для других сервисов
+        sed -i 's/traefik.http.routers/traefik.http.routers.wordpress/g' docker-compose.yml
+        sed -i 's/traefik.http.middlewares/traefik.http.middlewares.wordpress/g' docker-compose.yml
+        echo -e "${GREEN}Traefik переименован в wordpress-traefik для избежания конфликтов.${NC}"
+    fi
+fi
+
+# Проверка остальных контейнеров
 for container in "${container_names[@]}"; do
     if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
         echo -e "${YELLOW}Найден существующий контейнер: $container. Удаление...${NC}"
@@ -181,11 +202,20 @@ if [ "${FILE_MANAGER_ENABLED}" = "true" ]; then
   echo -e "${YELLOW}Ожидание инициализации WordPress...${NC}"
   sleep 45 # Ожидание полной инициализации WordPress
   
-  echo -e "${YELLOW}Установка и настройка плагина File Manager...${NC}"
-  docker-compose exec -T wordpress wp plugin install wp-file-manager --activate --allow-root
+  echo -e "${YELLOW}Установка WP-CLI в контейнер WordPress...${NC}"
+  docker-compose exec -T wordpress bash -c "curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x wp-cli.phar && mv wp-cli.phar /usr/local/bin/wp"
   
-  # Настройка безопасности File Manager (ограничение доступа только для администраторов)
-  docker-compose exec -T wordpress wp option add wp_file_manager_settings '{"fm_enable_root":"1","fm_enable_media":"1","fm_public_write":"0","fm_private_write":"0"}' --format=json
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Не удалось установить WP-CLI. Используйте админ-панель для установки плагинов.${NC}"
+  else
+    echo -e "${GREEN}WP-CLI успешно установлен!${NC}"
+    
+    echo -e "${YELLOW}Установка и настройка плагина File Manager...${NC}"
+    docker-compose exec -T wordpress wp plugin install wp-file-manager --activate --allow-root
+    
+    # Настройка безопасности File Manager (ограничение доступа только для администраторов)
+    docker-compose exec -T wordpress wp option add wp_file_manager_settings '{"fm_enable_root":"1","fm_enable_media":"1","fm_public_write":"0","fm_private_write":"0"}' --format=json
+  fi
   
   echo -e "${GREEN}Плагин File Manager успешно установлен${NC}"
   echo -e "${GREEN}Доступ к файловому менеджеру через админ-панель: https://${DOMAIN_NAME}/wp-admin → WP File Manager${NC}"
