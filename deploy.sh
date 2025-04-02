@@ -89,6 +89,20 @@ if [[ "$configure_cloudflare" =~ ^[Yy]$ ]]; then
     fi
 fi
 
+# Check for existing containers with same names and remove them if needed
+echo -e "${YELLOW}Checking for existing containers...${NC}"
+
+# Get container names from docker-compose.yml
+container_names=("traefik" "wordpress" "wordpress-nginx" "wordpress-db" "wordpress-redis")
+
+for container in "${container_names[@]}"; do
+    if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+        echo -e "${YELLOW}Found existing container: $container. Removing...${NC}"
+        docker stop $container 2>/dev/null
+        docker rm $container 2>/dev/null
+    fi
+done
+
 # Start containers
 echo -e "${YELLOW}Starting Docker containers...${NC}"
 docker-compose up -d

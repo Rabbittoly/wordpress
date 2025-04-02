@@ -47,8 +47,56 @@ cd "$install_dir"
 
 # Create .env file with user input
 echo -e "${YELLOW}Setting up your WordPress site...${NC}"
-read -p "Enter your domain name (e.g., example.com): " domain_name
-read -p "Enter your email for Let's Encrypt SSL certificates: " acme_email
+
+# Validate domain input
+domain_valid=false
+while [ "$domain_valid" = false ]; do
+    read -p "Enter your domain name (e.g., example.com): " domain_name
+    
+    # Check if domain is empty
+    if [ -z "$domain_name" ]; then
+        echo -e "${RED}Error: Domain name cannot be empty.${NC}"
+        continue
+    fi
+    
+    # Check if domain has proper format (simple check for at least one dot)
+    if [[ ! "$domain_name" =~ \. ]]; then
+        echo -e "${RED}Error: Invalid domain format. Please enter a valid domain (e.g., example.com).${NC}"
+        continue
+    fi
+    
+    # Confirm domain with user
+    echo -e "${YELLOW}You entered: ${GREEN}$domain_name${NC}"
+    read -p "Is this correct? (y/n): " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        domain_valid=true
+    fi
+done
+
+# Validate email input
+email_valid=false
+while [ "$email_valid" = false ]; do
+    read -p "Enter your email for Let's Encrypt SSL certificates: " acme_email
+    
+    # Check if email is empty
+    if [ -z "$acme_email" ]; then
+        echo -e "${RED}Error: Email cannot be empty.${NC}"
+        continue
+    fi
+    
+    # Check if email has proper format (simple check for @ sign)
+    if [[ ! "$acme_email" =~ @ ]]; then
+        echo -e "${RED}Error: Invalid email format. Please enter a valid email.${NC}"
+        continue
+    fi
+    
+    # Confirm email with user
+    echo -e "${YELLOW}You entered: ${GREEN}$acme_email${NC}"
+    read -p "Is this correct? (y/n): " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        email_valid=true
+    fi
+done
 
 # Generate strong passwords
 mysql_root_password=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9')
