@@ -327,3 +327,18 @@ if [[ "$start_deploy" =~ ^[Yy]$ ]]; then
   echo -e "Для входа в админ-панель перейдите по адресу: https://$domain_name/wp-admin"
 fi
 echo -e "Для управления сайтом используйте: ./admin.sh"
+
+# Предложение перейти в директорию установки, если она не является текущей
+if [ "$install_dir" != "." ] && [ -d "$install_dir" ]; then
+  echo -e "${YELLOW}Хотите перейти в директорию установки? (y/n)${NC}"
+  read -p "" cd_to_dir
+  if [[ "$cd_to_dir" =~ ^[Yy]$ ]]; then
+    cd_command="cd \"$install_dir\""
+    echo -e "${GREEN}Выполните следующую команду для перехода в директорию:${NC}"
+    echo -e "${BLUE}$cd_command${NC}"
+    
+    # Для bash/zsh, которые поддерживают PROMPT_COMMAND
+    export LAST_DIR="$install_dir"
+    echo -e "${GREEN}Или просто закройте этот терминал и откройте новый в директории установки.${NC}"
+  fi
+fi
